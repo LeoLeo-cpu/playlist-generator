@@ -29,7 +29,7 @@ export const getSpotifyLoginUrl = async () => {
   window.localStorage.setItem('spotify_code_verifier', codeVerifier);
 
   const REDIRECT_URI = window.location.origin + '/callback';
-  const scope = 'playlist-modify-public playlist-modify-private user-read-private user-read-email';
+  const scope = 'playlist-modify-public playlist-modify-private user-read-private user-read-email ugc-image-upload';
   
   const authUrl = new URL("https://accounts.spotify.com/authorize");
   const params = {
@@ -118,7 +118,7 @@ export const searchTrackSpotify = async (token, artist, title) => {
   }
 };
 
-export const createSpotifyPlaylist = async (token, userId, playlistName, trackUris) => {
+export const createSpotifyPlaylist = async (token, userId, playlistName, trackUris, playlistDesc) => {
   // O endpoint /me/playlists é recomendado para apps em Development Mode
   const createRes = await fetch(`https://api.spotify.com/v1/me/playlists`, {
     method: 'POST',
@@ -128,7 +128,7 @@ export const createSpotifyPlaylist = async (token, userId, playlistName, trackUr
     },
     body: JSON.stringify({
       name: playlistName,
-      description: 'Gerado pelo AI Playlist Generator',
+      description: playlistDesc || 'Gerado pelo AI Playlist Generator',
       public: true
     })
   });
@@ -151,7 +151,25 @@ export const createSpotifyPlaylist = async (token, userId, playlistName, trackUr
     });
   }
 
-  return playlistData.external_urls.spotify;
+  return { url: playlistData.external_urls.spotify, id: playlistData.id };
+};
+
+export const uploadSpotifyCover = async (token, playlistId, base64Image) => {
+  try {
+    const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/images`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'image/jpeg'
+      },
+      body: base64Image
+    });
+    if (!response.ok) {
+      console.error('Falha ao enviar capa para o Spotify');
+    }
+  } catch (error) {
+    console.error('Erro na requisição da capa:', error);
+  }
 };
 
 export const getSpotifyUserProfile = async (token) => {

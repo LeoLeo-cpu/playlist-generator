@@ -48,9 +48,9 @@ export const searchTrackYouTube = async (token, artist, title) => {
   }
 };
 
-export const createYouTubePlaylist = async (token, playlistName, videoIds) => {
+export const createYouTubePlaylist = async (token, playlistName, videoIds, playlistDesc) => {
   // 1. Criar a playlist
-  const createRes = await fetch('https://youtube.googleapis.com/youtube/v3/playlists?part=snippet,status', {
+  const createRes = await fetch('https://www.googleapis.com/youtube/v3/playlists?part=snippet,status', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -59,7 +59,7 @@ export const createYouTubePlaylist = async (token, playlistName, videoIds) => {
     body: JSON.stringify({
       snippet: {
         title: playlistName,
-        description: 'Gerado pelo AI Playlist Generator'
+        description: playlistDesc || 'Gerada pelo AI Playlist Generator'
       },
       status: {
         privacyStatus: 'private'

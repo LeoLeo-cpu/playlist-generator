@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Play, Pause, Trash2 } from 'lucide-react';
 import { generatePlaylist } from './services/api';
-import { getSpotifyLoginUrl, extractSpotifyTokenFromUrl, getSpotifyUserProfile, createSpotifyPlaylist } from './services/spotify';
+import { getSpotifyLoginUrl, extractSpotifyTokenFromUrl, getSpotifyUserProfile, createSpotifyPlaylist, uploadSpotifyCover } from './services/spotify';
 import { initGoogleAuth, loginWithYouTube, createYouTubePlaylist, searchTrackYouTube } from './services/youtube';
 import './App.css';
 
@@ -16,6 +17,14 @@ export function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [engine, setEngine] = useState('AI'); // 'AI' ou 'LASTFM'
 
+  // Novos States
+  const [trackCount, setTrackCount] = useState(20);
+  const [playlistName, setPlaylistName] = useState('Gerada por IA - Playlist Generator');
+  const [playlistDesc, setPlaylistDesc] = useState('Músicas selecionadas pelo seu gosto musical.');
+  const [coverBase64, setCoverBase64] = useState(null);
+  const [playingTrackId, setPlayingTrackId] = useState(null);
+  const audioRef = useRef(new Audio());
+
   // OAuth states
   const [spotifyToken, setSpotifyToken] = useState(null);
   const [spotifyProfile, setSpotifyProfile] = useState(null);
@@ -25,7 +34,10 @@ export function App() {
   const [isExportingYouTube, setIsExportingYouTube] = useState(false);
 
   useEffect(() => {
-    // Verifica login do Spotify na URL (agora é async por causa do PKCE)
+    // Escuta evento de fim da música
+    audioRef.current.addEventListener('ended', () => setPlayingTrackId(null));
+
+    // Verifica login do Spotify na URL
     extractSpotifyTokenFromUrl().then(token => {
       if (token) {
         setSpotifyToken(token);
@@ -37,19 +49,46 @@ export function App() {
     initGoogleAuth();
   }, []);
 
+  const generateCoverImage = async (desc) => {
+    try {
+      setCoverBase64(null);
+      const prompt = desc ? encodeURIComponent(desc + ", beautiful aesthetic album cover, hd, premium, no text") : "beautiful abstract music sound waves dark background aesthetic, no text";
+      const imageUrl = `https://image.pollinations.ai/prompt/${prompt}?width=512&height=512&nologo=true`;
+      
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        setCoverBase64(dataUrl.split(',')[1]); // Remove o prefixo data:image/jpeg;base64,
+      };
+      img.src = imageUrl;
+    } catch (error) {
+      console.error('Erro ao gerar capa', error);
+    }
+  };
+
   const handleGenerate = async (e) => {
     e.preventDefault();
     setIsGenerating(true);
     setErrorMsg('');
     setPlaylist(null);
+    setPlayingTrackId(null);
+    audioRef.current.pause();
     
     const referenceText = e.target.elements.reference.value;
-    const amount = e.target.elements.amount.value;
     const aiKey = import.meta.env.VITE_GROQ_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
     const lastfmKey = import.meta.env.VITE_LASTFM_API_KEY;
 
+    // Gera a capa em background
+    generateCoverImage(playlistDesc);
+
     try {
-      const realPlaylist = await generatePlaylist(referenceText, amount, selectedTags, engine, aiKey, lastfmKey, spotifyToken, youtubeToken);
+      const realPlaylist = await generatePlaylist(referenceText, trackCount, selectedTags, engine, aiKey, lastfmKey, spotifyToken, youtubeToken);
       setPlaylist(realPlaylist);
     } catch (err) {
       setErrorMsg(err.message);
@@ -66,8 +105,28 @@ export function App() {
     }
   };
 
+  const togglePlay = (url, id) => {
+    if (!url) return;
+    if (playingTrackId === id) {
+      audioRef.current.pause();
+      setPlayingTrackId(null);
+    } else {
+      audioRef.current.src = url;
+      audioRef.current.play();
+      setPlayingTrackId(id);
+    }
+  };
+
+  const removeTrack = (id) => {
+    setPlaylist(playlist.filter(t => t.id !== id));
+    if (playingTrackId === id) {
+      audioRef.current.pause();
+      setPlayingTrackId(null);
+    }
+  };
+
   const handleImageError = (e) => {
-    e.target.onerror = null; // Previne loop infinito
+    e.target.onerror = null;
     e.target.src = FALLBACK_IMAGE;
   };
 
@@ -76,8 +135,13 @@ export function App() {
     setIsExportingSpotify(true);
     try {
       const uris = playlist.filter(t => t.spotifyUri).map(t => t.spotifyUri);
-      const url = await createSpotifyPlaylist(spotifyToken, spotifyProfile.id, 'Gerada por IA - Playlist Generator', uris);
-      window.open(url, '_blank');
+      const spotifyExport = await createSpotifyPlaylist(spotifyToken, spotifyProfile.id, playlistName, uris, playlistDesc);
+      
+      if (coverBase64) {
+        await uploadSpotifyCover(spotifyToken, spotifyExport.id, coverBase64);
+      }
+
+      window.open(spotifyExport.url, '_blank');
     } catch (err) {
       console.error(err);
       alert(`Erro ao exportar para Spotify: ${err.message}`);
@@ -97,13 +161,12 @@ export function App() {
           if (track.youtubeVideoId) {
             videoIds.push(track.youtubeVideoId);
           } else {
-            // Busca agora, já que conectou depois de gerar
             const id = await searchTrackYouTube(token, track.artist, track.title);
             if (id) videoIds.push(id);
           }
         }
         
-        const url = await createYouTubePlaylist(token, 'Gerada por IA - Playlist Generator', videoIds);
+        const url = await createYouTubePlaylist(token, playlistName, videoIds, playlistDesc);
         window.open(url, '_blank');
       } catch (err) {
         console.error(err);
@@ -166,6 +229,52 @@ export function App() {
 
           <form className="glass-panel form-container" onSubmit={handleGenerate}>
             <div className="form-group">
+              <label>Nome da Playlist</label>
+              <input 
+                type="text" 
+                className="form-input" 
+                value={playlistName}
+                onChange={(e) => setPlaylistName(e.target.value)}
+                required
+              />
+            </div>
+            
+            <div className="form-group">
+              <label>Descrição (Usada p/ Capa IA)</label>
+              <textarea 
+                className="form-input" 
+                rows="2" 
+                value={playlistDesc}
+                onChange={(e) => setPlaylistDesc(e.target.value)}
+              ></textarea>
+            </div>
+
+            <div className="form-group">
+              <label>Quantidade de faixas: {trackCount}</label>
+              <input 
+                type="range" 
+                className="form-input" 
+                min="10" 
+                max="50" 
+                value={trackCount}
+                onChange={(e) => setTrackCount(Number(e.target.value))}
+                style={{ padding: '0', cursor: 'pointer' }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="reference">Músicas de referência</label>
+              <textarea 
+                id="reference" 
+                name="reference"
+                className="form-input" 
+                rows="3" 
+                placeholder="Ex: Daft Punk - Get Lucky, The Weeknd..."
+                required
+              ></textarea>
+            </div>
+
+            <div className="form-group">
               <label>Motor de Busca</label>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
                 <button 
@@ -185,31 +294,6 @@ export function App() {
                   🎵 Last.fm Clássico
                 </button>
               </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="reference">Músicas de referência</label>
-              <textarea 
-                id="reference" 
-                name="reference"
-                className="form-input" 
-                rows="3" 
-                placeholder="Ex: Daft Punk - Get Lucky, The Weeknd..."
-                required
-              ></textarea>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="amount">Quantidade de faixas</label>
-              <input 
-                type="number" 
-                id="amount" 
-                name="amount"
-                className="form-input" 
-                min="3" 
-                max="20" 
-                defaultValue="10" 
-              />
             </div>
 
             {engine === 'AI' && (
@@ -258,10 +342,18 @@ export function App() {
 
           {playlist && !isGenerating && (
             <div className="animate-fade-in">
-              <div className="results-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h2>Sua nova Playlist</h2>
-                  <span style={{ color: 'var(--text-muted)' }}>{playlist.length} faixas</span>
+              <div className="results-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  {coverBase64 ? (
+                    <img src={`data:image/jpeg;base64,${coverBase64}`} alt="Capa Gerada" style={{ width: '80px', height: '80px', borderRadius: '8px', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '80px', height: '80px', borderRadius: '8px', background: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>🎨</div>
+                  )}
+                  <div>
+                    <h2>{playlistName}</h2>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '300px' }}>{playlistDesc}</p>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{playlist.length} faixas</span>
+                  </div>
                 </div>
                 
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -278,28 +370,39 @@ export function App() {
               
               <div className="playlist glass-panel" style={{ padding: '24px' }}>
                 {playlist.map((track, index) => (
-                  <div key={track.id} className="track-card" style={{ animationDelay: `${index * 0.1}s` }}>
+                  <div key={track.id} className="track-card" style={{ animationDelay: `${index * 0.05}s` }}>
                     <img 
                       src={track.image || FALLBACK_IMAGE} 
                       alt={`Capa do álbum ${track.title}`} 
                       className="track-image"
                       onError={handleImageError}
                     />
+                    
                     <div className="track-info" style={{ flex: 1 }}>
                       <span className="track-title">{track.title}</span>
                       <span className="track-artist">{track.artist}</span>
-                      
-                      {/* Audio Player para preview do Spotify */}
-                      {track.spotifyPreview && (
-                        <audio controls src={track.spotifyPreview} style={{ height: '30px', marginTop: '8px', maxWidth: '200px' }} />
-                      )}
                     </div>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                      <div className="track-duration">{track.duration}</div>
-                      {track.spotifyUrl && (
-                         <a href={track.spotifyUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem', color: '#1DB954', textDecoration: 'none', background: 'rgba(29, 185, 84, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>Abrir Spotify</a>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {track.previewUrl && (
+                        <button 
+                          onClick={() => togglePlay(track.previewUrl, track.id)}
+                          style={{ background: 'rgba(255,255,255,0.1)', padding: '8px', borderRadius: '50%', cursor: 'pointer', border: 'none', color: 'white' }}
+                          title="Ouvir 30s"
+                        >
+                          {playingTrackId === track.id ? <Pause size={18} /> : <Play size={18} />}
+                        </button>
                       )}
+                      
+                      <div className="track-duration">{track.duration}</div>
+                      
+                      <button 
+                        onClick={() => removeTrack(track.id)}
+                        style={{ background: 'transparent', padding: '8px', border: 'none', color: '#ec4899', cursor: 'pointer' }}
+                        title="Remover faixa"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                   </div>
                 ))}
