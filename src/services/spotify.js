@@ -1,20 +1,87 @@
 const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 
-export const getSpotifyLoginUrl = () => {
-  const REDIRECT_URI = window.location.origin + '/callback';
-  const scope = 'playlist-modify-public playlist-modify-private';
-  return `https://accounts.spotify.com/authorize?client_id=${SPOTIFY_CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}`;
+// Funções auxiliares para PKCE
+const generateRandomString = (length) => {
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const values = crypto.getRandomValues(new Uint8Array(length));
+  return values.reduce((acc, x) => acc + possible[x % possible.length], "");
 };
 
-export const extractSpotifyTokenFromUrl = () => {
-  if (window.location.hash) {
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const token = hashParams.get('access_token');
-    if (token) {
-      window.history.pushState("", document.title, window.location.pathname + window.location.search);
-      return token;
+const sha256 = async (plain) => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(plain);
+  return window.crypto.subtle.digest('SHA-256', data);
+};
+
+const base64encode = (input) => {
+  return btoa(String.fromCharCode(...new Uint8Array(input)))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+};
+
+export const getSpotifyLoginUrl = async () => {
+  const codeVerifier = generateRandomString(64);
+  const hashed = await sha256(codeVerifier);
+  const codeChallenge = base64encode(hashed);
+
+  // Guarda o verifier para usar depois que voltar do login
+  window.localStorage.setItem('spotify_code_verifier', codeVerifier);
+
+  const REDIRECT_URI = window.location.origin + '/callback';
+  const scope = 'playlist-modify-public playlist-modify-private';
+  
+  const authUrl = new URL("https://accounts.spotify.com/authorize");
+  const params = {
+    response_type: 'code',
+    client_id: SPOTIFY_CLIENT_ID,
+    scope: scope,
+    code_challenge_method: 'S256',
+    code_challenge: codeChallenge,
+    redirect_uri: REDIRECT_URI,
+  };
+
+  authUrl.search = new URLSearchParams(params).toString();
+  return authUrl.toString();
+};
+
+export const extractSpotifyTokenFromUrl = async () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const code = urlParams.get('code');
+
+  // Se tem o 'code', significa que o usuário acabou de voltar do login
+  if (code) {
+    const codeVerifier = localStorage.getItem('spotify_code_verifier');
+    const REDIRECT_URI = window.location.origin + '/callback';
+
+    const payload = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: SPOTIFY_CLIENT_ID,
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: REDIRECT_URI,
+        code_verifier: codeVerifier,
+      }),
+    };
+
+    try {
+      const response = await fetch('https://accounts.spotify.com/api/token', payload);
+      const data = await response.json();
+      
+      if (data.access_token) {
+        // Limpa a URL para não ficar feia
+        window.history.pushState("", document.title, window.location.pathname);
+        return data.access_token;
+      }
+    } catch (err) {
+      console.error('Erro ao trocar o código pelo token:', err);
     }
   }
+  
   return null;
 };
 
@@ -38,7 +105,7 @@ export const searchTrackSpotify = async (token, artist, title) => {
         title: track.name,
         artist: track.artists.map(a => a.name).join(', '),
         image: track.album.images[0]?.url || '',
-        previewUrl: track.preview_url, // Alguns tracks não tem preview no Spotify, mas quando tem, retorna aqui
+        previewUrl: track.preview_url, 
         externalUrl: track.external_urls.spotify,
         durationMs: track.duration_ms
       };
@@ -51,7 +118,6 @@ export const searchTrackSpotify = async (token, artist, title) => {
 };
 
 export const createSpotifyPlaylist = async (token, userId, playlistName, trackUris) => {
-  // 1. Criar a playlist
   const createRes = await fetch(`https://api.spotify.com/v1/users/${userId}/playlists`, {
     method: 'POST',
     headers: {
@@ -68,7 +134,6 @@ export const createSpotifyPlaylist = async (token, userId, playlistName, trackUr
   if (!createRes.ok) throw new Error('Falha ao criar playlist');
   const playlistData = await createRes.json();
 
-  // 2. Adicionar faixas
   if (trackUris.length > 0) {
     await fetch(`https://api.spotify.com/v1/playlists/${playlistData.id}/tracks`, {
       method: 'POST',

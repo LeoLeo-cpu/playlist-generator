@@ -24,12 +24,13 @@ export function App() {
   const [isExportingYouTube, setIsExportingYouTube] = useState(false);
 
   useEffect(() => {
-    // Verifica login do Spotify na URL
-    const token = extractSpotifyTokenFromUrl();
-    if (token) {
-      setSpotifyToken(token);
-      getSpotifyUserProfile(token).then(setSpotifyProfile).catch(console.error);
-    }
+    // Verifica login do Spotify na URL (agora é async por causa do PKCE)
+    extractSpotifyTokenFromUrl().then(token => {
+      if (token) {
+        setSpotifyToken(token);
+        getSpotifyUserProfile(token).then(setSpotifyProfile).catch(console.error);
+      }
+    });
     
     // Inicia script do Google
     initGoogleAuth();
@@ -128,9 +129,9 @@ export function App() {
             <h3 style={{ marginBottom: '12px' }}>Conexões (Opcional)</h3>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {!spotifyToken ? (
-                <a href={getSpotifyLoginUrl()} className="btn-primary" style={{ background: '#1DB954', flex: 1, textAlign: 'center', textDecoration: 'none' }}>
+                <button type="button" onClick={async () => window.location.href = await getSpotifyLoginUrl()} className="btn-primary" style={{ background: '#1DB954', flex: 1, textAlign: 'center' }}>
                   Conectar Spotify
-                </a>
+                </button>
               ) : (
                 <div style={{ background: 'rgba(29, 185, 84, 0.2)', color: '#1DB954', padding: '12px', borderRadius: '8px', flex: 1, textAlign: 'center', fontWeight: 'bold' }}>
                   Spotify Conectado ✅
