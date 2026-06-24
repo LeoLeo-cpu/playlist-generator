@@ -119,7 +119,8 @@ export const searchTrackSpotify = async (token, artist, title) => {
 };
 
 export const createSpotifyPlaylist = async (token, userId, playlistName, trackUris) => {
-  const createRes = await fetch(`https://api.spotify.com/v1/users/${userId}/playlists`, {
+  // O endpoint /me/playlists é recomendado para apps em Development Mode
+  const createRes = await fetch(`https://api.spotify.com/v1/me/playlists`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -139,7 +140,8 @@ export const createSpotifyPlaylist = async (token, userId, playlistName, trackUr
   const playlistData = await createRes.json();
 
   if (trackUris.length > 0) {
-    await fetch(`https://api.spotify.com/v1/playlists/${playlistData.id}/tracks`, {
+    // A partir de 2026, usar /items em vez de /tracks
+    const addRes = await fetch(`https://api.spotify.com/v1/playlists/${playlistData.id}/items`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
