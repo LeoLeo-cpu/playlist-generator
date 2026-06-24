@@ -39,6 +39,7 @@ export const getSpotifyLoginUrl = async () => {
     code_challenge_method: 'S256',
     code_challenge: codeChallenge,
     redirect_uri: REDIRECT_URI,
+    show_dialog: 'true' // Força a tela de login para renovar permissões
   };
 
   authUrl.search = new URLSearchParams(params).toString();
