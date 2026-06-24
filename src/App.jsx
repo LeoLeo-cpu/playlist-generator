@@ -14,6 +14,7 @@ export function App() {
   const [playlist, setPlaylist] = useState(null);
   const [selectedTags, setSelectedTags] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
+  const [engine, setEngine] = useState('AI'); // 'AI' ou 'LASTFM'
 
   // OAuth states
   const [spotifyToken, setSpotifyToken] = useState(null);
@@ -44,10 +45,11 @@ export function App() {
     
     const referenceText = e.target.elements.reference.value;
     const amount = e.target.elements.amount.value;
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const aiKey = import.meta.env.VITE_GROQ_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+    const lastfmKey = import.meta.env.VITE_LASTFM_API_KEY;
 
     try {
-      const realPlaylist = await generatePlaylist(referenceText, amount, selectedTags, apiKey, spotifyToken, youtubeToken);
+      const realPlaylist = await generatePlaylist(referenceText, amount, selectedTags, engine, aiKey, lastfmKey, spotifyToken, youtubeToken);
       setPlaylist(realPlaylist);
     } catch (err) {
       setErrorMsg(err.message);
@@ -152,6 +154,28 @@ export function App() {
 
           <form className="glass-panel form-container" onSubmit={handleGenerate}>
             <div className="form-group">
+              <label>Motor de Busca</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setEngine('AI')}
+                  className={`btn-primary ${engine === 'AI' ? '' : 'inactive'}`}
+                  style={{ flex: 1, opacity: engine === 'AI' ? 1 : 0.5, transition: '0.3s' }}
+                >
+                  ✨ Inteligência Artificial
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setEngine('LASTFM')}
+                  className={`btn-primary ${engine === 'LASTFM' ? '' : 'inactive'}`}
+                  style={{ flex: 1, background: '#d51007', opacity: engine === 'LASTFM' ? 1 : 0.5, transition: '0.3s' }}
+                >
+                  🎵 Last.fm Clássico
+                </button>
+              </div>
+            </div>
+
+            <div className="form-group">
               <label htmlFor="reference">Músicas de referência</label>
               <textarea 
                 id="reference" 
@@ -176,21 +200,23 @@ export function App() {
               />
             </div>
 
-            <div className="form-group">
-              <label>Vibe / Estilo</label>
-              <div className="tags-container">
-                {VIBE_TAGS.map(tag => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => toggleTag(tag)}
-                    className={`vibe-tag ${selectedTags.includes(tag) ? 'selected' : ''}`}
-                  >
-                    {tag}
-                  </button>
-                ))}
+            {engine === 'AI' && (
+              <div className="form-group">
+                <label>Vibe / Estilo (Somente para IA)</label>
+                <div className="tags-container">
+                  {VIBE_TAGS.map(tag => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      className={`vibe-tag ${selectedTags.includes(tag) ? 'selected' : ''}`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <button type="submit" className="btn-primary" disabled={isGenerating}>
               {isGenerating ? 'Analisando e Gerando...' : 'Gerar Playlist'}

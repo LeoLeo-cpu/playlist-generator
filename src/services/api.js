@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { searchTrackSpotify } from './spotify';
+import { searchTrackLastFM } from './lastfm';
 import { searchTrackYouTube } from './youtube';
 
 // Utilitário para converter milissegundos em M:SS
@@ -34,14 +35,58 @@ export const fetchTrackMetadata = async (artist, title) => {
   }
 };
 
-// Função para falar com o Gemini e gerar a lista de músicas
-export const generatePlaylist = async (referenceText, amount, tags, apiKey, spotifyToken = null, youtubeToken = null) => {
-  if (!apiKey || apiKey === 'sua_chave_aqui') {
-    throw new Error('Chave da API do Gemini não configurada no arquivo .env');
-  }
+// Função para gerar a lista de músicas (Suporta IA e Last.fm)
+export const generatePlaylist = async (referenceText, amount, tags, engine = 'AI', apiKey = null, lastfmKey = null, spotifyToken = null, youtubeToken = null) => {
+  let playlistBase = [];
 
-  const tagString = tags.length > 0 ? tags.join(', ') : 'Nenhuma em específico';
-  const prompt = `Você é um curador musical especialista. O usuário forneceu algumas músicas de referência e deseja descobrir faixas NOVAS e EXCELENTES no mesmo estilo.
+  try {
+    if (engine === 'LASTFM') {
+      if (!lastfmKey) throw new Error('Chave da API do Last.fm não configurada no arquivo .env');
+      
+      console.log("Usando motor clássico do Last.fm!");
+      const lines = referenceText.split('\n').filter(line => line.trim() !== '');
+      let allSimilarTracks = [];
+      
+      // Para as 3 primeiras referências, busca faixas similares
+      for (const line of lines.slice(0, 3)) {
+        const parts = line.split('-');
+        const title = parts[0]?.trim() || line;
+        const artist = parts[1]?.trim() || '';
+        
+        const similar = await searchTrackLastFM(artist, title, lastfmKey);
+        allSimilarTracks = [...allSimilarTracks, ...similar];
+      }
+      
+      // Embaralha e pega a quantidade desejada
+      allSimilarTracks = allSimilarTracks.sort(() => 0.5 - Math.random());
+      
+      // Se Last.fm não retornar nada, usamos um fallback genérico
+      if (allSimilarTracks.length === 0) {
+         throw new Error('O Last.fm não encontrou músicas suficientes para essas referências.');
+      }
+      
+      // Remove duplicatas
+      const uniqueTracks = [];
+      const seen = new Set();
+      for (const t of allSimilarTracks) {
+         const key = `${t.artist}-${t.title}`.toLowerCase();
+         if (!seen.has(key)) {
+           seen.add(key);
+           uniqueTracks.push(t);
+         }
+      }
+
+      playlistBase = uniqueTracks.slice(0, amount);
+      
+    } else {
+      // MOTOR IA (GEMINI OU GROQ)
+      if (!apiKey || apiKey === 'sua_chave_aqui') {
+        throw new Error('Chave da API da IA não configurada no arquivo .env');
+      }
+      console.log("Usando motor Inteligência Artificial!");
+
+      const tagString = tags.length > 0 ? tags.join(', ') : 'Nenhuma em específico';
+      const prompt = `Você é um curador musical especialista. O usuário forneceu algumas músicas de referência e deseja descobrir faixas NOVAS e EXCELENTES no mesmo estilo.
 
 Referências musicais fornecidas pelo usuário: "${referenceText}"
 Vibes/Estilos desejados: "${tagString}"
@@ -55,98 +100,134 @@ REGRAS CRÍTICAS:
 4. O JSON deve ser um array de objetos, onde cada objeto tem duas propriedades: "artist" (string) e "title" (string).
 5. Não inclua marcações de Markdown (como \`\`\`json). Apenas o JSON puro.`;
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    
-    const playlistSchema = {
-      type: SchemaType.ARRAY,
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          artist: { type: SchemaType.STRING },
-          title: { type: SchemaType.STRING }
-        },
-        required: ["artist", "title"]
-      }
-    };
+      // Se a chave começar com gsk_, é Groq
+      if (apiKey.startsWith('gsk_')) {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+            messages: [{ role: 'user', content: prompt }],
+            response_format: { type: 'json_object' } // Groq requer que o prompt peça JSON
+          })
+        });
+        
+        if (!response.ok) {
+           if (response.status === 429) throw new Error('Servidores da Groq sobrecarregados (Cota Excedida).');
+           throw new Error(`Erro na API Groq: ${response.status}`);
+        }
+        const data = await response.json();
+        let text = data.choices[0]?.message?.content || "[]";
+        
+        // Extrai JSON com Regex (Groq json_object retorna um objeto, então garantimos array)
+        const jsonMatch = text.match(/\[.*\]|\{.*\}/s);
+        if (jsonMatch) text = jsonMatch[0];
+        
+        try {
+          playlistBase = JSON.parse(text);
+          // Se o Groq colocou as músicas dentro de uma chave tipo {"playlist": [...]}, extrai
+          if (!Array.isArray(playlistBase)) {
+            const possibleArrayKey = Object.keys(playlistBase).find(k => Array.isArray(playlistBase[k]));
+            if (possibleArrayKey) {
+              playlistBase = playlistBase[possibleArrayKey];
+            } else if (playlistBase.artist && playlistBase.title) {
+              playlistBase = [playlistBase];
+            } else {
+              playlistBase = [];
+            }
+          }
+        } catch (e) {
+          throw new Error('A Groq retornou um formato inválido.');
+        }
 
-    // Vamos usar o gemini-2.0-flash com um SCHEMA rígido para não permitir nenhum texto lixo
-    let model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.0-flash',
-      generationConfig: { 
-        responseMimeType: "application/json",
-        responseSchema: playlistSchema
-      }
-    });
-    let result;
-
-    try {
-      result = await model.generateContent(prompt);
-    } catch (e) {
-      if (e.message && e.message.includes('429')) {
-        throw new Error('Servidores do Google sobrecarregados (Cota Excedida). Por favor, aguarde cerca de 1 minuto e tente novamente!');
-      } else if (e.message && e.message.includes('503')) {
-        throw new Error('O Google Gemini está fora do ar no momento. Tente novamente mais tarde.');
       } else {
-        throw new Error('Erro na comunicação com a IA: ' + e.message);
-      }
-    }
+        // Usa Gemini
+        const genAI = new GoogleGenerativeAI(apiKey);
+        
+        const playlistSchema = {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              artist: { type: SchemaType.STRING },
+              title: { type: SchemaType.STRING }
+            },
+            required: ["artist", "title"]
+          }
+        };
 
-    let text = "";
-    try {
-      text = result.response.text();
-    } catch (e) {
-      text = "[]";
-    }
+        const model = genAI.getGenerativeModel({ 
+          model: 'gemini-2.0-flash',
+          generationConfig: { 
+            responseMimeType: "application/json",
+            responseSchema: playlistSchema
+          }
+        });
 
-    let cleanText = text;
-    
-    // Tratamento radical com Regex para achar o array ou objeto
-    const jsonMatch = cleanText.match(/\[.*\]|\{.*\}/s);
-    if (jsonMatch) {
-      cleanText = jsonMatch[0];
-    }
-    
-    let playlistBase = [];
-    try {
-      playlistBase = JSON.parse(cleanText);
-      // Se a IA retornar um objeto único em vez de array, transforma em array
-      if (!Array.isArray(playlistBase)) {
-        if (playlistBase.artist && playlistBase.title) {
-          playlistBase = [playlistBase];
-        } else {
-          playlistBase = [];
+        let result;
+        try {
+          result = await model.generateContent(prompt);
+        } catch (e) {
+          if (e.message && e.message.includes('429')) {
+            throw new Error('Servidores do Google sobrecarregados (Cota Excedida). Por favor, aguarde cerca de 1 minuto e tente novamente!');
+          } else if (e.message && e.message.includes('503')) {
+            throw new Error('O Google Gemini está fora do ar no momento. Tente novamente mais tarde.');
+          } else {
+            throw new Error('Erro na comunicação com a IA: ' + e.message);
+          }
+        }
+
+        let text = "";
+        try {
+          text = result.response.text();
+        } catch (e) {
+          text = "[]";
+        }
+
+        let cleanText = text;
+        const jsonMatch = cleanText.match(/\[.*\]|\{.*\}/s);
+        if (jsonMatch) {
+          cleanText = jsonMatch[0];
+        }
+        
+        try {
+          playlistBase = JSON.parse(cleanText);
+          if (!Array.isArray(playlistBase)) {
+            if (playlistBase.artist && playlistBase.title) {
+              playlistBase = [playlistBase];
+            } else {
+              playlistBase = [];
+            }
+          }
+        } catch (parseError) {
+          console.error('Erro ao fazer parse do JSON:', parseError, 'Texto bruto:', text);
+          playlistBase = [
+            { artist: "Artista Desconhecido", title: "Música de Teste 1" },
+            { artist: "Artista Desconhecido", title: "Música de Teste 2" }
+          ];
         }
       }
-    } catch (parseError) {
-      console.error('Erro ao fazer parse do JSON:', parseError, 'Texto bruto:', text);
-      // Falha graciosa: retorna músicas padrão se a IA enlouquecer
-      playlistBase = [
-        { artist: "Artista Desconhecido", title: "Música de Teste 1" },
-        { artist: "Artista Desconhecido", title: "Música de Teste 2" }
-      ];
     }
 
-    // Agora, para cada música, vamos buscar a capa!
+    // Agora, para cada música gerada, vamos buscar as metadados e capas!
     const enrichedPlaylist = await Promise.all(playlistBase.map(async (track, index) => {
       let meta = null;
       let youtubeVideoId = null;
 
-      // 1. Tenta buscar no Spotify primeiro (se estiver logado, pois tem qualidade melhor)
       if (spotifyToken) {
         meta = await searchTrackSpotify(spotifyToken, track.artist, track.title);
-        // Formata a duração do Spotify (que vem em ms) para manter o padrão M:SS
         if (meta && meta.durationMs) {
           meta.duration = formatDuration(meta.durationMs);
         }
       }
 
-      // 2. Fallback para o iTunes se não estiver logado no Spotify ou se o Spotify não achar
       if (!meta) {
         meta = await fetchTrackMetadata(track.artist, track.title);
       }
 
-      // 3. Tenta buscar no YouTube (se estiver logado) para guardar o ID do vídeo para exportação
       if (youtubeToken) {
          youtubeVideoId = await searchTrackYouTube(youtubeToken, track.artist, track.title);
       }
@@ -155,8 +236,8 @@ REGRAS CRÍTICAS:
         id: index + 1,
         title: meta?.title || track.title,
         artist: meta?.artist || track.artist,
-        duration: meta?.duration || '3:30', // Fallback se não achar
-        image: meta?.image || '', // Vazio ativará o fallback cinza que criamos
+        duration: meta?.duration || '3:30',
+        image: meta?.image || '',
         spotifyUri: meta?.uri || null,
         spotifyUrl: meta?.externalUrl || null,
         spotifyPreview: meta?.previewUrl || null,
