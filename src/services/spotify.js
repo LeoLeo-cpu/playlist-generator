@@ -165,7 +165,9 @@ export const uploadSpotifyCover = async (token, playlistId, base64Image) => {
       body: base64Image
     });
     if (!response.ok) {
-      console.error('Falha ao enviar capa para o Spotify');
+      const errText = await response.text();
+      console.error('Falha ao enviar capa para o Spotify:', errText);
+      throw new Error(`Erro ao enviar capa: ${response.status}`);
     }
   } catch (error) {
     console.error('Erro na requisição da capa:', error);

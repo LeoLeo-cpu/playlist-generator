@@ -2,7 +2,7 @@ export const searchTrackLastFM = async (artist, title, apiKey) => {
   try {
     const queryArtist = encodeURIComponent(artist);
     const queryTitle = encodeURIComponent(title);
-    const response = await fetch(`https://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist=${queryArtist}&track=${queryTitle}&api_key=${apiKey}&format=json&limit=10`);
+    const response = await fetch(`https://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist=${queryArtist}&track=${queryTitle}&api_key=${apiKey}&format=json&limit=50`);
     
     if (!response.ok) return [];
     

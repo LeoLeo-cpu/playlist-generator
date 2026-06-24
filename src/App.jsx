@@ -59,11 +59,11 @@ export function App() {
       img.crossOrigin = "Anonymous";
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
+        canvas.width = 300;
+        canvas.height = 300;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        ctx.drawImage(img, 0, 0, 300, 300);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
         setCoverBase64(dataUrl.split(',')[1]); // Remove o prefixo data:image/jpeg;base64,
       };
       img.src = imageUrl;
@@ -384,9 +384,9 @@ export function App() {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      {track.previewUrl && (
+                      {track.spotifyPreview && (
                         <button 
-                          onClick={() => togglePlay(track.previewUrl, track.id)}
+                          onClick={() => togglePlay(track.spotifyPreview, track.id)}
                           style={{ background: 'rgba(255,255,255,0.1)', padding: '8px', borderRadius: '50%', cursor: 'pointer', border: 'none', color: 'white' }}
                           title="Ouvir 30s"
                         >

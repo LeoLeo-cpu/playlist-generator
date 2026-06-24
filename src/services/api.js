@@ -111,7 +111,8 @@ REGRAS CRÍTICAS:
           body: JSON.stringify({
             model: 'meta-llama/llama-4-scout-17b-16e-instruct',
             messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' } // Groq requer que o prompt peça JSON
+            response_format: { type: 'json_object' },
+            max_tokens: 4000
           })
         });
         
