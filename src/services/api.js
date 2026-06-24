@@ -95,17 +95,40 @@ REGRAS CRÍTICAS:
       }
     }
 
-    const text = result.response.text();
+    let text = "";
+    try {
+      text = result.response.text();
+    } catch (e) {
+      text = "[]";
+    }
+
     let cleanText = text;
     
-    // Tratamento radical contra lixo fora do JSON
-    const firstBracket = cleanText.indexOf('[');
-    const lastBracket = cleanText.lastIndexOf(']');
-    if (firstBracket !== -1 && lastBracket !== -1) {
-      cleanText = cleanText.substring(firstBracket, lastBracket + 1);
+    // Tratamento radical com Regex para achar o array ou objeto
+    const jsonMatch = cleanText.match(/\[.*\]|\{.*\}/s);
+    if (jsonMatch) {
+      cleanText = jsonMatch[0];
     }
     
-    const playlistBase = JSON.parse(cleanText);
+    let playlistBase = [];
+    try {
+      playlistBase = JSON.parse(cleanText);
+      // Se a IA retornar um objeto único em vez de array, transforma em array
+      if (!Array.isArray(playlistBase)) {
+        if (playlistBase.artist && playlistBase.title) {
+          playlistBase = [playlistBase];
+        } else {
+          playlistBase = [];
+        }
+      }
+    } catch (parseError) {
+      console.error('Erro ao fazer parse do JSON:', parseError, 'Texto bruto:', text);
+      // Falha graciosa: retorna músicas padrão se a IA enlouquecer
+      playlistBase = [
+        { artist: "Artista Desconhecido", title: "Música de Teste 1" },
+        { artist: "Artista Desconhecido", title: "Música de Teste 2" }
+      ];
+    }
 
     // Agora, para cada música, vamos buscar a capa!
     const enrichedPlaylist = await Promise.all(playlistBase.map(async (track, index) => {
