@@ -84,10 +84,10 @@ REGRAS CRÍTICAS:
       result = await model.generateContent(prompt);
     } catch (e) {
       if (e.message && (e.message.includes('not found') || e.message.includes('503') || e.message.includes('429'))) {
-        // Se tudo der errado, usamos o Gemma 4
+        // Se tudo der errado, usamos o gemini-1.5-flash como plano B (tem limite maior)
         model = genAI.getGenerativeModel({ 
-          model: 'gemma-4-26b-a4b-it',
-          generationConfig: { responseMimeType: "application/json" } // Gemma não suporta schema completo, mas aceita json mode
+          model: 'gemini-1.5-flash',
+          generationConfig: { responseMimeType: "application/json" } // Usamos apenas o JSON mode
         }); 
         result = await model.generateContent(prompt);
       } else {
