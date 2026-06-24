@@ -29,7 +29,7 @@ export const getSpotifyLoginUrl = async () => {
   window.localStorage.setItem('spotify_code_verifier', codeVerifier);
 
   const REDIRECT_URI = window.location.origin + '/callback';
-  const scope = 'playlist-modify-public playlist-modify-private';
+  const scope = 'playlist-modify-public playlist-modify-private user-read-private user-read-email';
   
   const authUrl = new URL("https://accounts.spotify.com/authorize");
   const params = {
@@ -128,7 +128,7 @@ export const createSpotifyPlaylist = async (token, userId, playlistName, trackUr
     body: JSON.stringify({
       name: playlistName,
       description: 'Gerado pelo AI Playlist Generator',
-      public: false
+      public: true
     })
   });
   
