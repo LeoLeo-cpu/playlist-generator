@@ -83,15 +83,12 @@ REGRAS CRÍTICAS:
     try {
       result = await model.generateContent(prompt);
     } catch (e) {
-      if (e.message && (e.message.includes('not found') || e.message.includes('503') || e.message.includes('429'))) {
-        // Se tudo der errado, usamos o gemini-1.5-flash como plano B (tem limite maior)
-        model = genAI.getGenerativeModel({ 
-          model: 'gemini-1.5-flash',
-          generationConfig: { responseMimeType: "application/json" } // Usamos apenas o JSON mode
-        }); 
-        result = await model.generateContent(prompt);
+      if (e.message && e.message.includes('429')) {
+        throw new Error('Servidores do Google sobrecarregados (Cota Excedida). Por favor, aguarde cerca de 1 minuto e tente novamente!');
+      } else if (e.message && e.message.includes('503')) {
+        throw new Error('O Google Gemini está fora do ar no momento. Tente novamente mais tarde.');
       } else {
-        throw e;
+        throw new Error('Erro na comunicação com a IA: ' + e.message);
       }
     }
 
