@@ -24,7 +24,8 @@ export const fetchTrackMetadata = async (artist, title) => {
         image: track.artworkUrl100 ? track.artworkUrl100.replace('100x100', '300x300') : '', // Pega imagem maior
         duration: formatDuration(track.trackTimeMillis),
         title: track.trackName || title, // Usa o nome oficial se achar
-        artist: track.artistName || artist
+        artist: track.artistName || artist,
+        previewUrl: track.previewUrl // Fallback vital para o audio player
       };
     }
     
@@ -225,8 +226,17 @@ REGRAS CRÍTICAS:
         }
       }
 
-      if (!meta) {
-        meta = await fetchTrackMetadata(track.artist, track.title);
+      // Se não achou no Spotify, ou achou mas o Spotify não liberou o áudio (preview_url null) ou imagem
+      if (!meta || !meta.previewUrl || !meta.image) {
+        const itunesMeta = await fetchTrackMetadata(track.artist, track.title);
+        if (itunesMeta) {
+          if (!meta) meta = {};
+          meta.image = meta.image || itunesMeta.image;
+          meta.duration = meta.duration || itunesMeta.duration;
+          meta.previewUrl = meta.previewUrl || itunesMeta.previewUrl;
+          meta.title = meta.title || itunesMeta.title;
+          meta.artist = meta.artist || itunesMeta.artist;
+        }
       }
 
       if (youtubeToken) {
