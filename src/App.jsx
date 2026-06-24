@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { generatePlaylist } from './services/api';
 import { getSpotifyLoginUrl, extractSpotifyTokenFromUrl, getSpotifyUserProfile, createSpotifyPlaylist } from './services/spotify';
-import { initGoogleAuth, loginWithYouTube, createYouTubePlaylist } from './services/youtube';
+import { initGoogleAuth, loginWithYouTube, createYouTubePlaylist, searchTrackYouTube } from './services/youtube';
 import './App.css';
 
 const VIBE_TAGS = ['Treino', 'Foco', 'Relaxar', 'Festa', 'Anos 90', 'Triste', 'Acústico'];
