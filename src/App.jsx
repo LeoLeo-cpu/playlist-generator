@@ -79,7 +79,8 @@ export function App() {
       const url = await createSpotifyPlaylist(spotifyToken, spotifyProfile.id, 'Gerada por IA - Playlist Generator', uris);
       window.open(url, '_blank');
     } catch (err) {
-      alert("Erro ao exportar para Spotify");
+      console.error(err);
+      alert(`Erro ao exportar para Spotify: ${err.message}`);
     } finally {
       setIsExportingSpotify(false);
     }
@@ -91,11 +92,22 @@ export function App() {
     const executeExport = async (token) => {
       setIsExportingYouTube(true);
       try {
-        const videoIds = playlist.filter(t => t.youtubeVideoId).map(t => t.youtubeVideoId);
+        const videoIds = [];
+        for (const track of playlist) {
+          if (track.youtubeVideoId) {
+            videoIds.push(track.youtubeVideoId);
+          } else {
+            // Busca agora, já que conectou depois de gerar
+            const id = await searchTrackYouTube(token, track.artist, track.title);
+            if (id) videoIds.push(id);
+          }
+        }
+        
         const url = await createYouTubePlaylist(token, 'Gerada por IA - Playlist Generator', videoIds);
         window.open(url, '_blank');
       } catch (err) {
-        alert("Erro ao exportar para YouTube");
+        console.error(err);
+        alert(`Erro ao exportar para YouTube: ${err.message}`);
       } finally {
         setIsExportingYouTube(false);
       }

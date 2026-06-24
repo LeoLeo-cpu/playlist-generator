@@ -131,7 +131,10 @@ export const createSpotifyPlaylist = async (token, userId, playlistName, trackUr
     })
   });
   
-  if (!createRes.ok) throw new Error('Falha ao criar playlist');
+  if (!createRes.ok) {
+    const errorText = await createRes.text();
+    throw new Error(`Falha ao criar playlist: ${errorText}`);
+  }
   const playlistData = await createRes.json();
 
   if (trackUris.length > 0) {

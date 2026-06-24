@@ -67,7 +67,10 @@ export const createYouTubePlaylist = async (token, playlistName, videoIds) => {
     })
   });
 
-  if (!createRes.ok) throw new Error('Falha ao criar playlist no YouTube');
+  if (!createRes.ok) {
+    const errorText = await createRes.text();
+    throw new Error(`Falha ao criar playlist no YouTube: ${errorText}`);
+  }
   const playlistData = await createRes.json();
   const playlistId = playlistData.id;
 
