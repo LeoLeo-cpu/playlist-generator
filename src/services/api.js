@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
-import { searchTrackSpotify } from './spotify';
+import { searchTrackSpotify, getSpotifyRecommendations } from './spotify';
 import { searchTrackYouTube } from './youtube';
 
 // Utilitário para converter milissegundos em M:SS
@@ -36,6 +36,49 @@ export const fetchTrackMetadata = async (artist, title) => {
 
 // Função para falar com o Gemini e gerar a lista de músicas
 export const generatePlaylist = async (referenceText, amount, tags, apiKey, spotifyToken = null, youtubeToken = null) => {
+  // --- MODO SPOTIFY PREMIUM (SEM IA) ---
+  if (spotifyToken) {
+    console.log("Usando motor nativo do Spotify!");
+    // Extrai as músicas que o usuário digitou (separando por linha)
+    const lines = referenceText.split('\n').filter(line => line.trim() !== '');
+    const seedTrackIds = [];
+    
+    // Pesquisa no Spotify para pegar o ID das 5 primeiras referências (limite da API)
+    for (const line of lines.slice(0, 5)) {
+      // O usuário digita "Musica - Artista", tentamos quebrar pelo traço
+      const parts = line.split('-');
+      const title = parts[0]?.trim() || line;
+      const artist = parts[1]?.trim() || '';
+      
+      const track = await searchTrackSpotify(spotifyToken, artist, title);
+      if (track && track.id) {
+        seedTrackIds.push(track.id);
+      }
+    }
+    
+    if (seedTrackIds.length > 0) {
+      // Busca recomendações nativas
+      const spotifyTracks = await getSpotifyRecommendations(spotifyToken, seedTrackIds, amount);
+      
+      // Mapeia para o formato que a nossa interface espera e busca YouTube
+      const enrichedPlaylist = await Promise.all(spotifyTracks.map(async (t) => {
+        let youtubeVideoId = null;
+        if (youtubeToken) {
+          youtubeVideoId = await searchTrackYouTube(youtubeToken, t.artist, t.title);
+        }
+        
+        return {
+          ...t,
+          duration: formatDuration(t.durationMs), // Aplica formatação
+          youtubeVideoId: youtubeVideoId
+        };
+      }));
+      
+      return enrichedPlaylist;
+    }
+  }
+  
+  // --- MODO IA (GEMINI FALLBACK) ---
   if (!apiKey || apiKey === 'sua_chave_aqui') {
     throw new Error('Chave da API do Gemini não configurada no arquivo .env');
   }

@@ -155,3 +155,30 @@ export const getSpotifyUserProfile = async (token) => {
   if (!response.ok) throw new Error('Token inválido ou expirado');
   return await response.json();
 };
+
+export const getSpotifyRecommendations = async (token, seedTrackIds, limit = 5) => {
+  try {
+    const seeds = seedTrackIds.slice(0, 5).join(','); // Spotify permite máximo de 5 seeds
+    const response = await fetch(`https://api.spotify.com/v1/recommendations?limit=${limit}&seed_tracks=${seeds}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    return data.tracks.map((track, index) => ({
+      id: index + 1,
+      title: track.name,
+      artist: track.artists.map(a => a.name).join(', '),
+      image: track.album.images[0]?.url || '',
+      durationMs: track.duration_ms, // Será formatado depois no api.js
+      spotifyUri: track.uri,
+      spotifyUrl: track.external_urls.spotify,
+      spotifyPreview: track.preview_url,
+      youtubeVideoId: null
+    }));
+  } catch (error) {
+    console.error('Erro ao buscar recomendações no Spotify:', error);
+    return [];
+  }
+};
