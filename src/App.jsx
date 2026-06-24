@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Trash2 } from 'lucide-react';
+import { Play, Pause, Trash2, Volume2 } from 'lucide-react';
 import { generatePlaylist } from './services/api';
 import { getSpotifyLoginUrl, extractSpotifyTokenFromUrl, getSpotifyUserProfile, createSpotifyPlaylist, uploadSpotifyCover } from './services/spotify';
 import { initGoogleAuth, loginWithYouTube, createYouTubePlaylist, searchTrackYouTube } from './services/youtube';
@@ -23,6 +23,7 @@ export function App() {
   const [playlistDesc, setPlaylistDesc] = useState('Músicas selecionadas pelo seu gosto musical.');
   const [coverBase64, setCoverBase64] = useState(null);
   const [playingTrackId, setPlayingTrackId] = useState(null);
+  const [volume, setVolume] = useState(0.2);
   const audioRef = useRef(new Audio());
 
   // OAuth states
@@ -36,6 +37,7 @@ export function App() {
   useEffect(() => {
     // Escuta evento de fim da música
     audioRef.current.addEventListener('ended', () => setPlayingTrackId(null));
+    audioRef.current.volume = 0.2;
 
     // Verifica login do Spotify na URL
     extractSpotifyTokenFromUrl().then(token => {
@@ -356,7 +358,20 @@ export function App() {
                   </div>
                 </div>
                 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Volume2 size={20} color="#ec4899" />
+                  <input 
+                    type="range" 
+                    min="0" max="1" step="0.05" 
+                    value={volume}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setVolume(val);
+                      audioRef.current.volume = val;
+                    }}
+                    style={{ width: '80px', marginRight: '16px', accentColor: '#ec4899' }}
+                  />
+
                   {spotifyToken && (
                     <button onClick={handleExportSpotify} disabled={isExportingSpotify} className="btn-primary" style={{ background: '#1DB954', padding: '8px 16px', fontSize: '0.9rem' }}>
                       {isExportingSpotify ? 'Salvando...' : 'Salvar no Spotify'}
