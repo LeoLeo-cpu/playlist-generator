@@ -21,6 +21,8 @@ export function App() {
   const [trackCount, setTrackCount] = useState(20);
   const [playlistName, setPlaylistName] = useState('Gerada por IA - Playlist Generator');
   const [playlistDesc, setPlaylistDesc] = useState('Músicas selecionadas pelo seu gosto musical.');
+  const [yearStart, setYearStart] = useState('');
+  const [yearEnd, setYearEnd] = useState('');
   const [coverBase64, setCoverBase64] = useState(null);
   const [playingTrackId, setPlayingTrackId] = useState(null);
   const [volume, setVolume] = useState(0.2);
@@ -90,7 +92,7 @@ export function App() {
     generateCoverImage(playlistDesc);
 
     try {
-      const realPlaylist = await generatePlaylist(referenceText, trackCount, selectedTags, engine, aiKey, lastfmKey, spotifyToken, youtubeToken);
+      const realPlaylist = await generatePlaylist(referenceText, trackCount, selectedTags, engine, aiKey, lastfmKey, spotifyToken, youtubeToken, yearStart, yearEnd);
       setPlaylist(realPlaylist);
     } catch (err) {
       setErrorMsg(err.message);
@@ -299,21 +301,45 @@ export function App() {
             </div>
 
             {engine === 'AI' && (
-              <div className="form-group">
-                <label>Vibe / Estilo (Somente para IA)</label>
-                <div className="tags-container">
-                  {VIBE_TAGS.map(tag => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => toggleTag(tag)}
-                      className={`vibe-tag ${selectedTags.includes(tag) ? 'selected' : ''}`}
-                    >
-                      {tag}
-                    </button>
-                  ))}
+              <>
+                <div className="form-group">
+                  <label>Filtro de Época (Opcional)</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      type="number" 
+                      className="form-input" 
+                      placeholder="Ano Inicial (Ex: 2015)"
+                      value={yearStart}
+                      onChange={(e) => setYearStart(e.target.value)}
+                      style={{ flex: 1 }}
+                    />
+                    <input 
+                      type="number" 
+                      className="form-input" 
+                      placeholder="Ano Final (Ex: 2020)"
+                      value={yearEnd}
+                      onChange={(e) => setYearEnd(e.target.value)}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
                 </div>
-              </div>
+
+                <div className="form-group">
+                  <label>Vibe / Estilo (Somente para IA)</label>
+                  <div className="tags-container">
+                    {VIBE_TAGS.map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => toggleTag(tag)}
+                        className={`vibe-tag ${selectedTags.includes(tag) ? 'selected' : ''}`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
 
             <button type="submit" className="btn-primary" disabled={isGenerating}>

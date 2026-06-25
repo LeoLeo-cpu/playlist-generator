@@ -37,7 +37,7 @@ export const fetchTrackMetadata = async (artist, title) => {
 };
 
 // Função para gerar a lista de músicas (Suporta IA e Last.fm)
-export const generatePlaylist = async (referenceText, amount, tags, engine = 'AI', apiKey = null, lastfmKey = null, spotifyToken = null, youtubeToken = null) => {
+export const generatePlaylist = async (referenceText, amount, tags, engine = 'AI', apiKey = null, lastfmKey = null, spotifyToken = null, youtubeToken = null, yearStart = '', yearEnd = '') => {
   let playlistBase = [];
 
   try {
@@ -45,7 +45,7 @@ export const generatePlaylist = async (referenceText, amount, tags, engine = 'AI
       if (!lastfmKey) throw new Error('Chave da API do Last.fm não configurada no arquivo .env');
       
       console.log("Usando motor clássico do Last.fm!");
-      const lines = referenceText.split('\n').filter(line => line.trim() !== '');
+      const lines = referenceText.split(/[\n,]+/).filter(line => line.trim() !== '');
       let allSimilarTracks = [];
       
       // Para as 3 primeiras referências, busca faixas similares
@@ -87,10 +87,16 @@ export const generatePlaylist = async (referenceText, amount, tags, engine = 'AI
       console.log("Usando motor Inteligência Artificial!");
 
       const tagString = tags.length > 0 ? tags.join(', ') : 'Nenhuma em específico';
+      
+      let yearFilter = '';
+      if (yearStart && yearEnd) {
+        yearFilter = `\nFiltro de Ano: As músicas devem ter sido lançadas estritamente entre os anos de ${yearStart} e ${yearEnd}.`;
+      }
+
       const prompt = `Você é um curador musical especialista. O usuário forneceu algumas músicas de referência e deseja descobrir faixas NOVAS e EXCELENTES no mesmo estilo.
 
 Referências musicais fornecidas pelo usuário: "${referenceText}"
-Vibes/Estilos desejados: "${tagString}"
+Vibes/Estilos desejados: "${tagString}"${yearFilter}
 
 Sua tarefa é criar uma playlist recomendada com EXATAMENTE ${amount} músicas.
 
