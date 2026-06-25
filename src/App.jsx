@@ -88,12 +88,19 @@ export function App() {
     const aiKey = import.meta.env.VITE_GROQ_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
     const lastfmKey = import.meta.env.VITE_LASTFM_API_KEY;
 
-    // Gera a capa em background
-    generateCoverImage(playlistDesc);
-
     try {
-      const realPlaylist = await generatePlaylist(referenceText, trackCount, selectedTags, engine, aiKey, lastfmKey, spotifyToken, youtubeToken, yearStart, yearEnd);
-      setPlaylist(realPlaylist);
+      const result = await generatePlaylist(referenceText, trackCount, selectedTags, engine, aiKey, lastfmKey, spotifyToken, youtubeToken, yearStart, yearEnd);
+      setPlaylist(result.tracks);
+      
+      let finalDesc = playlistDesc;
+      if (engine === 'AI' && result.description) {
+        finalDesc = result.description;
+        setPlaylistDesc(result.description);
+      }
+
+      // Gera a capa com a descrição (seja a da IA ou a digitada)
+      generateCoverImage(finalDesc);
+
     } catch (err) {
       setErrorMsg(err.message);
     } finally {

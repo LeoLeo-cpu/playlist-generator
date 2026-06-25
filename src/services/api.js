@@ -39,6 +39,7 @@ export const fetchTrackMetadata = async (artist, title) => {
 // Função para gerar a lista de músicas (Suporta IA e Last.fm)
 export const generatePlaylist = async (referenceText, amount, tags, engine = 'AI', apiKey = null, lastfmKey = null, spotifyToken = null, youtubeToken = null, yearStart = '', yearEnd = '') => {
   let playlistBase = [];
+  let generatedDescription = '';
 
   try {
     if (engine === 'LASTFM') {
@@ -78,6 +79,7 @@ export const generatePlaylist = async (referenceText, amount, tags, engine = 'AI
       }
 
       playlistBase = uniqueTracks.slice(0, amount);
+      generatedDescription = "Playlist gerada pelo motor clássico do Last.fm.";
       
     } else {
       // MOTOR IA (GEMINI OU GROQ)
@@ -98,14 +100,16 @@ export const generatePlaylist = async (referenceText, amount, tags, engine = 'AI
 Referências musicais fornecidas pelo usuário: "${referenceText}"
 Vibes/Estilos desejados: "${tagString}"${yearFilter}
 
-Sua tarefa é criar uma playlist recomendada com EXATAMENTE ${amount} músicas.
-
-REGRAS CRÍTICAS:
-1. NÃO INCLUA na sua resposta NENHUMA das músicas que o usuário enviou como referência. O objetivo do app é DESCOBRIR novas músicas similares, e não repetir as que o usuário já conhece.
-2. As recomendações devem fazer sentido e ter forte sinergia de ritmo, época ou estilo com as referências.
-3. Retorne APENAS um JSON válido. Nenhum outro texto.
-4. O JSON deve ser um array de objetos, onde cada objeto tem duas propriedades: "artist" (string) e "title" (string).
-5. Não inclua marcações de Markdown (como \`\`\`json). Apenas o JSON puro.`;
+101: Sua tarefa é criar uma playlist recomendada com EXATAMENTE ${amount} músicas.
+102: 
+103: REGRAS CRÍTICAS:
+104: 1. NÃO INCLUA na sua resposta NENHUMA das músicas que o usuário enviou como referência. O objetivo do app é DESCOBRIR novas músicas similares, e não repetir as que o usuário já conhece.
+105: 2. As recomendações devem fazer sentido e ter forte sinergia de ritmo, época ou estilo com as referências.
+106: 3. Retorne APENAS um JSON válido. Nenhum outro texto.
+107: 4. O JSON deve ser um objeto com duas propriedades obrigatórias:
+    - "playlist": um array de objetos, onde cada objeto tem "artist" (string) e "title" (string).
+    - "description": uma string contendo uma descrição super cativante e curta (em português) para a playlist gerada, baseada nas músicas escolhidas e na vibe.
+108: 5. Não inclua marcações de Markdown (como \`\`\`json). Apenas o JSON puro.`;
 
       // Se a chave começar com gsk_, é Groq
       if (apiKey.startsWith('gsk_')) {
@@ -135,17 +139,18 @@ REGRAS CRÍTICAS:
         if (jsonMatch) text = jsonMatch[0];
         
         try {
-          playlistBase = JSON.parse(text);
-          // Se o Groq colocou as músicas dentro de uma chave tipo {"playlist": [...]}, extrai
-          if (!Array.isArray(playlistBase)) {
-            const possibleArrayKey = Object.keys(playlistBase).find(k => Array.isArray(playlistBase[k]));
-            if (possibleArrayKey) {
-              playlistBase = playlistBase[possibleArrayKey];
-            } else if (playlistBase.artist && playlistBase.title) {
-              playlistBase = [playlistBase];
-            } else {
-              playlistBase = [];
-            }
+          const parsed = JSON.parse(text);
+          if (parsed.playlist && Array.isArray(parsed.playlist)) {
+            playlistBase = parsed.playlist;
+            generatedDescription = parsed.description || "Uma playlist incrível para você.";
+          } else if (Array.isArray(parsed)) {
+            playlistBase = parsed;
+            generatedDescription = "Uma playlist incrível para você.";
+          } else {
+             // Fallback pra tentar achar array
+             const possibleArrayKey = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
+             playlistBase = possibleArrayKey ? parsed[possibleArrayKey] : [];
+             generatedDescription = parsed.description || "Uma playlist incrível para você.";
           }
         } catch (e) {
           throw new Error('A Groq retornou um formato inválido.');
@@ -156,15 +161,22 @@ REGRAS CRÍTICAS:
         const genAI = new GoogleGenerativeAI(apiKey);
         
         const playlistSchema = {
-          type: SchemaType.ARRAY,
-          items: {
-            type: SchemaType.OBJECT,
-            properties: {
-              artist: { type: SchemaType.STRING },
-              title: { type: SchemaType.STRING }
+          type: SchemaType.OBJECT,
+          properties: {
+            playlist: {
+              type: SchemaType.ARRAY,
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  artist: { type: SchemaType.STRING },
+                  title: { type: SchemaType.STRING }
+                },
+                required: ["artist", "title"]
+              }
             },
-            required: ["artist", "title"]
-          }
+            description: { type: SchemaType.STRING, description: "Uma descrição curta e cativante em português." }
+          },
+          required: ["playlist", "description"]
         };
 
         const model = genAI.getGenerativeModel({ 
@@ -202,13 +214,16 @@ REGRAS CRÍTICAS:
         }
         
         try {
-          playlistBase = JSON.parse(cleanText);
-          if (!Array.isArray(playlistBase)) {
-            if (playlistBase.artist && playlistBase.title) {
-              playlistBase = [playlistBase];
-            } else {
-              playlistBase = [];
-            }
+          const parsed = JSON.parse(cleanText);
+          if (parsed.playlist && Array.isArray(parsed.playlist)) {
+            playlistBase = parsed.playlist;
+            generatedDescription = parsed.description || "Uma playlist incrível para você.";
+          } else if (Array.isArray(parsed)) {
+            playlistBase = parsed;
+            generatedDescription = "Uma playlist incrível para você.";
+          } else {
+            playlistBase = [];
+            generatedDescription = "Uma playlist incrível para você.";
           }
         } catch (parseError) {
           console.error('Erro ao fazer parse do JSON:', parseError, 'Texto bruto:', text);
@@ -262,7 +277,10 @@ REGRAS CRÍTICAS:
       };
     }));
 
-    return enrichedPlaylist;
+    return {
+      tracks: enrichedPlaylist,
+      description: generatedDescription
+    };
 
   } catch (error) {
     console.error('Erro ao gerar playlist:', error);
