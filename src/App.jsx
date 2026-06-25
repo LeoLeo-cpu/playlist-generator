@@ -308,18 +308,18 @@ export function App() {
                     <input 
                       type="number" 
                       className="form-input" 
-                      placeholder="Ano Inicial (Ex: 2015)"
+                      placeholder="Ano Inicial"
                       value={yearStart}
                       onChange={(e) => setYearStart(e.target.value)}
-                      style={{ flex: 1 }}
+                      style={{ flex: 1, minWidth: 0 }}
                     />
                     <input 
                       type="number" 
                       className="form-input" 
-                      placeholder="Ano Final (Ex: 2020)"
+                      placeholder="Ano Final"
                       value={yearEnd}
                       onChange={(e) => setYearEnd(e.target.value)}
-                      style={{ flex: 1 }}
+                      style={{ flex: 1, minWidth: 0 }}
                     />
                   </div>
                 </div>
