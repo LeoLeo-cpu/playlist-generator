@@ -15,14 +15,11 @@ export function App() {
   const [playlist, setPlaylist] = useState(null);
   const [selectedTags, setSelectedTags] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
-  const [engine, setEngine] = useState('AI'); // 'AI' ou 'LASTFM'
 
   // Novos States
   const [trackCount, setTrackCount] = useState(20);
   const [playlistName, setPlaylistName] = useState('Gerada por IA - Playlist Generator');
   const [playlistDesc, setPlaylistDesc] = useState('Músicas selecionadas pelo seu gosto musical.');
-  const [yearStart, setYearStart] = useState('');
-  const [yearEnd, setYearEnd] = useState('');
   const [coverBase64, setCoverBase64] = useState(null);
   const [playingTrackId, setPlayingTrackId] = useState(null);
   const [volume, setVolume] = useState(0.2);
@@ -89,13 +86,16 @@ export function App() {
     const lastfmKey = import.meta.env.VITE_LASTFM_API_KEY;
 
     try {
-      const result = await generatePlaylist(referenceText, trackCount, selectedTags, engine, aiKey, lastfmKey, spotifyToken, youtubeToken, yearStart, yearEnd);
+      const result = await generatePlaylist(referenceText, trackCount, selectedTags, aiKey, lastfmKey, spotifyToken, youtubeToken);
       setPlaylist(result.tracks);
       
       let finalDesc = playlistDesc;
-      if (engine === 'AI' && result.description) {
+      if (result.description) {
         finalDesc = result.description;
         setPlaylistDesc(result.description);
+      }
+      if (result.name) {
+        setPlaylistName(result.name);
       }
 
       // Gera a capa com a descrição (seja a da IA ou a digitada)
@@ -286,68 +286,21 @@ export function App() {
             </div>
 
             <div className="form-group">
-              <label>Motor de Busca</label>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                <button 
-                  type="button" 
-                  onClick={() => setEngine('AI')}
-                  className={`btn-primary ${engine === 'AI' ? '' : 'inactive'}`}
-                  style={{ flex: 1, opacity: engine === 'AI' ? 1 : 0.5, transition: '0.3s' }}
-                >
-                  ✨ Inteligência Artificial
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => setEngine('LASTFM')}
-                  className={`btn-primary ${engine === 'LASTFM' ? '' : 'inactive'}`}
-                  style={{ flex: 1, background: '#d51007', opacity: engine === 'LASTFM' ? 1 : 0.5, transition: '0.3s' }}
-                >
-                  🎵 Last.fm Clássico
-                </button>
+              <label>Vibe / Estilo (Opcional - Ajuda a IA no batismo da playlist e da capa)</label>
+              <div className="tags-container">
+                {VIBE_TAGS.map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    className={`vibe-tag ${selectedTags.includes(tag) ? 'selected' : ''}`}
+                  >
+                    {tag}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {engine === 'AI' && (
-              <>
-                <div className="form-group">
-                  <label>Filtro de Época (Opcional)</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input 
-                      type="number" 
-                      className="form-input" 
-                      placeholder="Ano Inicial"
-                      value={yearStart}
-                      onChange={(e) => setYearStart(e.target.value)}
-                      style={{ flex: 1, minWidth: 0 }}
-                    />
-                    <input 
-                      type="number" 
-                      className="form-input" 
-                      placeholder="Ano Final"
-                      value={yearEnd}
-                      onChange={(e) => setYearEnd(e.target.value)}
-                      style={{ flex: 1, minWidth: 0 }}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label>Vibe / Estilo (Somente para IA)</label>
-                  <div className="tags-container">
-                    {VIBE_TAGS.map(tag => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => toggleTag(tag)}
-                        className={`vibe-tag ${selectedTags.includes(tag) ? 'selected' : ''}`}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
 
             <button type="submit" className="btn-primary" disabled={isGenerating}>
               {isGenerating ? 'Analisando e Gerando...' : 'Gerar Playlist'}

@@ -37,200 +37,129 @@ export const fetchTrackMetadata = async (artist, title) => {
 };
 
 // Função para gerar a lista de músicas (Suporta IA e Last.fm)
-export const generatePlaylist = async (referenceText, amount, tags, engine = 'AI', apiKey = null, lastfmKey = null, spotifyToken = null, youtubeToken = null, yearStart = '', yearEnd = '') => {
+export const generatePlaylist = async (referenceText, amount, tags, apiKey = null, lastfmKey = null, spotifyToken = null, youtubeToken = null) => {
   let playlistBase = [];
-  let generatedDescription = '';
+  let generatedDescription = 'Playlist fantástica baseada no seu gosto musical.';
+  let generatedName = 'Gerada por IA - Playlist Generator';
 
   try {
-    if (engine === 'LASTFM') {
-      if (!lastfmKey) throw new Error('Chave da API do Last.fm não configurada no arquivo .env');
+    if (!lastfmKey) throw new Error('Chave da API do Last.fm não configurada no arquivo .env');
+    
+    console.log("Usando motor clássico do Last.fm para buscar faixas!");
+    const lines = referenceText.split(/[\n,]+/).filter(line => line.trim() !== '');
+    let allSimilarTracks = [];
+    
+    // Para as 3 primeiras referências, busca faixas similares
+    for (const line of lines.slice(0, 3)) {
+      const parts = line.split('-');
+      const title = parts[0]?.trim() || line;
+      const artist = parts[1]?.trim() || '';
       
-      console.log("Usando motor clássico do Last.fm!");
-      const lines = referenceText.split(/[\n,]+/).filter(line => line.trim() !== '');
-      let allSimilarTracks = [];
-      
-      // Para as 3 primeiras referências, busca faixas similares
-      for (const line of lines.slice(0, 3)) {
-        const parts = line.split('-');
-        const title = parts[0]?.trim() || line;
-        const artist = parts[1]?.trim() || '';
-        
-        const similar = await searchTrackLastFM(artist, title, lastfmKey);
-        allSimilarTracks = [...allSimilarTracks, ...similar];
-      }
-      
-      // Embaralha e pega a quantidade desejada
-      allSimilarTracks = allSimilarTracks.sort(() => 0.5 - Math.random());
-      
-      // Se Last.fm não retornar nada, usamos um fallback genérico
-      if (allSimilarTracks.length === 0) {
-         throw new Error('O Last.fm não encontrou músicas suficientes para essas referências.');
-      }
-      
-      // Remove duplicatas
-      const uniqueTracks = [];
-      const seen = new Set();
-      for (const t of allSimilarTracks) {
-         const key = `${t.artist}-${t.title}`.toLowerCase();
-         if (!seen.has(key)) {
-           seen.add(key);
-           uniqueTracks.push(t);
-         }
-      }
+      const similar = await searchTrackLastFM(artist, title, lastfmKey);
+      allSimilarTracks = [...allSimilarTracks, ...similar];
+    }
+    
+    // Embaralha e pega a quantidade desejada
+    allSimilarTracks = allSimilarTracks.sort(() => 0.5 - Math.random());
+    
+    // Se Last.fm não retornar nada
+    if (allSimilarTracks.length === 0) {
+       throw new Error('O Last.fm não encontrou músicas suficientes para essas referências.');
+    }
+    
+    // Remove duplicatas
+    const uniqueTracks = [];
+    const seen = new Set();
+    for (const t of allSimilarTracks) {
+       const key = `${t.artist}-${t.title}`.toLowerCase();
+       if (!seen.has(key)) {
+         seen.add(key);
+         uniqueTracks.push(t);
+       }
+    }
 
-      playlistBase = uniqueTracks.slice(0, amount);
-      generatedDescription = "Playlist gerada pelo motor clássico do Last.fm.";
-      
-    } else {
-      // MOTOR IA (GEMINI OU GROQ)
-      if (!apiKey || apiKey === 'sua_chave_aqui') {
-        throw new Error('Chave da API da IA não configurada no arquivo .env');
-      }
-      console.log("Usando motor Inteligência Artificial!");
+    playlistBase = uniqueTracks.slice(0, amount);
+    
+    // AGORA USA A IA APENAS PARA BATIZAR E DESCREVER A PLAYLIST
+    if (apiKey && apiKey !== 'sua_chave_aqui') {
+      console.log("Usando Inteligência Artificial para gerar Nome e Descrição!");
 
       const tagString = tags.length > 0 ? tags.join(', ') : 'Nenhuma em específico';
+      const tracklistString = playlistBase.map(t => `${t.artist} - ${t.title}`).join('\n');
+
+      const prompt = `Você é um curador musical experiente. O sistema já selecionou a seguinte tracklist baseada nas referências do usuário:
       
-      let yearFilter = '';
-      if (yearStart && yearEnd) {
-        yearFilter = `\nFiltro de Ano: As músicas devem ter sido lançadas estritamente entre os anos de ${yearStart} e ${yearEnd}.`;
-      }
+${tracklistString}
 
-      const prompt = `Você é um curador musical especialista. O usuário forneceu algumas músicas de referência e deseja descobrir faixas NOVAS e EXCELENTES no mesmo estilo.
+Vibes/Estilos solicitados pelo usuário: "${tagString}"
 
-Referências musicais fornecidas pelo usuário: "${referenceText}"
-Vibes/Estilos desejados: "${tagString}"${yearFilter}
+Sua tarefa é batizar essa playlist.
+Retorne APENAS um JSON válido. Nenhum outro texto, sem marcação de markdown.
+O JSON deve ser um objeto com exatamente duas propriedades:
+- "name": O título perfeito e criativo para esta playlist (curto, cativante).
+- "description": Uma descrição super cativante (em português) sobre o que esperar dessa seleção musical.`;
 
-101: Sua tarefa é criar uma playlist recomendada com EXATAMENTE ${amount} músicas.
-102: 
-103: REGRAS CRÍTICAS:
-104: 1. NÃO INCLUA na sua resposta NENHUMA das músicas que o usuário enviou como referência. O objetivo do app é DESCOBRIR novas músicas similares, e não repetir as que o usuário já conhece.
-105: 2. As recomendações devem fazer sentido e ter forte sinergia de ritmo, época ou estilo com as referências.
-106: 3. Retorne APENAS um JSON válido. Nenhum outro texto.
-107: 4. O JSON deve ser um objeto com duas propriedades obrigatórias:
-    - "playlist": um array de objetos, onde cada objeto tem "artist" (string) e "title" (string).
-    - "description": uma string contendo uma descrição super cativante e curta (em português) para a playlist gerada, baseada nas músicas escolhidas e na vibe.
-108: 5. Não inclua marcações de Markdown (como \`\`\`json). Apenas o JSON puro.`;
-
-      // Se a chave começar com gsk_, é Groq
       if (apiKey.startsWith('gsk_')) {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-            messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' },
-            max_tokens: 4000
-          })
-        });
-        
-        if (!response.ok) {
-           if (response.status === 429) throw new Error('Servidores da Groq sobrecarregados (Cota Excedida).');
-           throw new Error(`Erro na API Groq: ${response.status}`);
-        }
-        const data = await response.json();
-        let text = data.choices[0]?.message?.content || "[]";
-        
-        // Extrai JSON com Regex (Groq json_object retorna um objeto, então garantimos array)
-        const jsonMatch = text.match(/\[.*\]|\{.*\}/s);
-        if (jsonMatch) text = jsonMatch[0];
-        
         try {
-          const parsed = JSON.parse(text);
-          if (parsed.playlist && Array.isArray(parsed.playlist)) {
-            playlistBase = parsed.playlist;
-            generatedDescription = parsed.description || "Uma playlist incrível para você.";
-          } else if (Array.isArray(parsed)) {
-            playlistBase = parsed;
-            generatedDescription = "Uma playlist incrível para você.";
-          } else {
-             // Fallback pra tentar achar array
-             const possibleArrayKey = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
-             playlistBase = possibleArrayKey ? parsed[possibleArrayKey] : [];
-             generatedDescription = parsed.description || "Uma playlist incrível para você.";
+          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+              messages: [{ role: 'user', content: prompt }],
+              response_format: { type: 'json_object' },
+              max_tokens: 1000
+            })
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            let text = data.choices[0]?.message?.content || "{}";
+            const jsonMatch = text.match(/\{.*\}/s);
+            if (jsonMatch) text = jsonMatch[0];
+            const parsed = JSON.parse(text);
+            
+            if (parsed.name) generatedName = parsed.name;
+            if (parsed.description) generatedDescription = parsed.description;
           }
         } catch (e) {
-          throw new Error('A Groq retornou um formato inválido.');
+          console.error("Falha ao gerar metadados via Groq", e);
         }
-
       } else {
         // Usa Gemini
-        const genAI = new GoogleGenerativeAI(apiKey);
-        
-        const playlistSchema = {
-          type: SchemaType.OBJECT,
-          properties: {
-            playlist: {
-              type: SchemaType.ARRAY,
-              items: {
-                type: SchemaType.OBJECT,
-                properties: {
-                  artist: { type: SchemaType.STRING },
-                  title: { type: SchemaType.STRING }
-                },
-                required: ["artist", "title"]
-              }
+        try {
+          const genAI = new GoogleGenerativeAI(apiKey);
+          
+          const metaSchema = {
+            type: SchemaType.OBJECT,
+            properties: {
+              name: { type: SchemaType.STRING },
+              description: { type: SchemaType.STRING }
             },
-            description: { type: SchemaType.STRING, description: "Uma descrição curta e cativante em português." }
-          },
-          required: ["playlist", "description"]
-        };
+            required: ["name", "description"]
+          };
 
-        const model = genAI.getGenerativeModel({ 
-          model: 'gemini-2.0-flash',
-          generationConfig: { 
-            responseMimeType: "application/json",
-            responseSchema: playlistSchema
-          }
-        });
+          const model = genAI.getGenerativeModel({ 
+            model: 'gemini-2.0-flash',
+            generationConfig: { 
+              responseMimeType: "application/json",
+              responseSchema: metaSchema
+            }
+          });
 
-        let result;
-        try {
-          result = await model.generateContent(prompt);
+          const result = await model.generateContent(prompt);
+          let text = result.response.text();
+          const jsonMatch = text.match(/\{.*\}/s);
+          if (jsonMatch) text = jsonMatch[0];
+          
+          const parsed = JSON.parse(text);
+          if (parsed.name) generatedName = parsed.name;
+          if (parsed.description) generatedDescription = parsed.description;
         } catch (e) {
-          if (e.message && e.message.includes('429')) {
-            throw new Error('Servidores do Google sobrecarregados (Cota Excedida). Por favor, aguarde cerca de 1 minuto e tente novamente!');
-          } else if (e.message && e.message.includes('503')) {
-            throw new Error('O Google Gemini está fora do ar no momento. Tente novamente mais tarde.');
-          } else {
-            throw new Error('Erro na comunicação com a IA: ' + e.message);
-          }
-        }
-
-        let text = "";
-        try {
-          text = result.response.text();
-        } catch (e) {
-          text = "[]";
-        }
-
-        let cleanText = text;
-        const jsonMatch = cleanText.match(/\[.*\]|\{.*\}/s);
-        if (jsonMatch) {
-          cleanText = jsonMatch[0];
-        }
-        
-        try {
-          const parsed = JSON.parse(cleanText);
-          if (parsed.playlist && Array.isArray(parsed.playlist)) {
-            playlistBase = parsed.playlist;
-            generatedDescription = parsed.description || "Uma playlist incrível para você.";
-          } else if (Array.isArray(parsed)) {
-            playlistBase = parsed;
-            generatedDescription = "Uma playlist incrível para você.";
-          } else {
-            playlistBase = [];
-            generatedDescription = "Uma playlist incrível para você.";
-          }
-        } catch (parseError) {
-          console.error('Erro ao fazer parse do JSON:', parseError, 'Texto bruto:', text);
-          playlistBase = [
-            { artist: "Artista Desconhecido", title: "Música de Teste 1" },
-            { artist: "Artista Desconhecido", title: "Música de Teste 2" }
-          ];
+          console.error("Falha ao gerar metadados via Gemini", e);
         }
       }
     }
@@ -279,6 +208,7 @@ Vibes/Estilos desejados: "${tagString}"${yearFilter}
 
     return {
       tracks: enrichedPlaylist,
+      name: generatedName,
       description: generatedDescription
     };
 
