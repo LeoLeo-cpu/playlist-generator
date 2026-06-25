@@ -50,11 +50,14 @@ export function App() {
     initGoogleAuth();
   }, []);
 
-  const generateCoverImage = async (desc) => {
+  const generateCoverImage = async (promptName) => {
     try {
       setCoverBase64(null);
-      const prompt = desc ? encodeURIComponent(desc + ", beautiful aesthetic album cover, hd, premium, no text") : "beautiful abstract music sound waves dark background aesthetic, no text";
-      const imageUrl = `https://image.pollinations.ai/prompt/${prompt}?width=512&height=512&nologo=true`;
+      const safeName = promptName ? promptName.replace(/[^a-zA-Z0-9 ]/g, "") : "";
+      const promptText = safeName ? `${safeName} music album cover, abstract, aesthetic, hd, premium, no text` : "beautiful abstract music sound waves dark background aesthetic, no text";
+      const prompt = encodeURIComponent(promptText);
+      const seed = Math.floor(Math.random() * 100000);
+      const imageUrl = `https://image.pollinations.ai/prompt/${prompt}?width=512&height=512&nologo=true&seed=${seed}`;
       
       const img = new Image();
       img.crossOrigin = "Anonymous";
@@ -66,6 +69,9 @@ export function App() {
         ctx.drawImage(img, 0, 0, 300, 300);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
         setCoverBase64(dataUrl.split(',')[1]); // Remove o prefixo data:image/jpeg;base64,
+      };
+      img.onerror = () => {
+        console.error('Falha ao carregar a imagem do Pollinations AI');
       };
       img.src = imageUrl;
     } catch (error) {
@@ -94,12 +100,14 @@ export function App() {
         finalDesc = result.description;
         setPlaylistDesc(result.description);
       }
+      let finalName = playlistName;
       if (result.name) {
+        finalName = result.name;
         setPlaylistName(result.name);
       }
 
-      // Gera a capa com a descrição (seja a da IA ou a digitada)
-      generateCoverImage(finalDesc);
+      // Gera a capa usando o nome (mais curto, evita erro no Pollinations)
+      generateCoverImage(finalName);
 
     } catch (err) {
       setErrorMsg(err.message);
